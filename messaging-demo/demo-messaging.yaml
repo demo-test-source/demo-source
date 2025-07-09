@@ -1,0 +1,171 @@
+apiVersion: integration.ibm.com/v1beta1
+kind: IntegrationAssembly
+metadata:
+  annotations:
+    operator.ibm.com/ia-managed-integrations-dry-run: 'false'
+  labels:
+    backup.integration.ibm.com/component: integrationassembly
+  name: demo-messaging-canvas
+  namespace: nav-ns
+spec:
+  independentResources:
+    selector:
+      matchLabels:
+        demo-messaging-canvas.nav-ns.canvas: 'true'
+  managedInstances:
+    list: []
+  managedIntegrations:
+    list: []
+---
+apiVersion: appconnect.ibm.com/v1beta1
+kind: IntegrationRuntime
+metadata:
+  annotations:
+    appconnect.ibm.com/updating: 'false'
+  labels:
+    appconnect.ibm.com/designerapiflow: 'false'
+    appconnect.ibm.com/designereventflow: 'true'
+    appconnect.ibm.com/toolkitflow: 'true'
+    demo-messaging-canvas.nav-ns.canvas: 'true'
+  name: demoir
+  namespace: nav-ns
+spec:
+  barURL:
+    - >-
+      https://github.com/demo-test-source/demo-source/raw/refs/heads/main/message_timer_flow.bar
+  configurations:
+    - demoirconfig1
+    - barauth-empty-demo
+  license:
+    accept: true
+    use: CloudPakForIntegrationNonProductionFREE
+    license: L-KPRV-AUG9NC
+  logFormat: basic
+  template:
+    spec:
+      metadata:
+        annotations:
+          configuration-last-updated: barauth-empty-demo1739879678
+    containers:
+      - name: runtime
+        startupProbe:
+          periodSeconds: 2
+          failureThreshold: 999
+  version: '13.0'
+---
+apiVersion: appconnect.ibm.com/v1beta1
+kind: Configuration
+metadata:
+  annotations:
+    configuration-last-updated: '1739879080'
+  labels:
+    backup.appconnect.ibm.com/component: configuration
+    bcdr-candidate: t
+    demo-messaging-canvas.nav-ns.canvas: 'true'
+  name: barauth-empty-demo
+  namespace: nav-ns
+spec:
+  description: Authentication for public GitHub, no credentials needed
+  type: barauth
+  data: >-
+    eyJhdXRoVHlwZSI6IkJBU0lDX0FVVEgiLCJjcmVkZW50aWFscyI6eyJ1c2VybmFtZSI6IiIsInBhc3N3b3JkIjoiIn19Cg==
+---
+apiVersion: appconnect.ibm.com/v1beta1
+kind: Configuration
+metadata:
+  annotations:
+    configuration-last-updated: '1739877519'
+  labels:
+    backup.appconnect.ibm.com/component: configuration
+    bcdr-candidate: t
+    demo-messaging-canvas.nav-ns.canvas: 'true'
+  name: demoirconfig1
+  namespace: nav-ns
+spec:
+  data: YWNjb3VudHM6IHt9
+  type: accounts
+---
+apiVersion: integration.ibm.com/v1beta1
+kind: MessagingUser
+metadata:
+  labels:
+    backup.apiconnect.ibm.com/component: messaginguser
+    demo-messaging-canvas.nav-ns.canvas: 'true'
+  name: msguser
+  namespace: nav-ns
+spec:
+  configurations:
+    - accountName: demoq
+      name: demoirconfig1
+  designerAuthorings: []
+  user:
+    channel:
+      name: demochannel01
+    queues:
+      - auth:
+          - GET
+          - INQ
+          - PUT
+          - BROWSE
+          - PASSALL
+        name: demo-queue-1
+---
+apiVersion: integration.ibm.com/v1beta1
+kind: MessagingChannel
+metadata:
+  labels:
+    backup.apiconnect.ibm.com/component: messagingchannel
+    demo-messaging-canvas.nav-ns.canvas: 'true'
+  name: demochannel01
+  namespace: nav-ns
+spec:
+  channel:
+    type: ServerConnMTLS
+  messagingServer:
+    name: demo-messaging-server
+  sniRoute:
+    enabled: true
+---
+apiVersion: integration.ibm.com/v1beta1
+kind: MessagingQueue
+metadata:
+  labels:
+    backup.apiconnect.ibm.com/component: messagingqueue
+    demo-messaging-canvas.nav-ns.canvas: 'true'
+  name: demo-queue-1
+  namespace: nav-ns
+spec:
+  messagingServer:
+    name: demo-messaging-server
+  queue:
+    name: demoqueue1
+    type: Local
+---
+apiVersion: integration.ibm.com/v1beta1
+kind: MessagingServer
+metadata:
+  labels:
+    backup.apiconnect.ibm.com/component: messagingserver
+    demo-messaging-canvas.nav-ns.canvas: 'true'
+  name: demo-messaging-server
+  namespace: nav-ns
+spec:
+  license:
+    accept: true
+    license: L-JTPV-KYG8TF
+    use: CloudPakForIntegrationNonProduction
+  queueManager:
+    name: demomessagingserver
+    storage:
+      defaultClass: ocs-storagecluster-ceph-rbd
+  template:
+    queueManager:
+      spec:
+        template:
+          pod:
+            containers:
+              - env:
+                  - name: ICC_SHIFT
+                    value: '3'
+                name: qmgr
+  version: 16.1.0
