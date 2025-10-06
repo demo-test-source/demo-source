@@ -19,7 +19,7 @@ This bashscript helps user setup IBM API Connect (APIC) resources needed to comp
 * [Environment & constants](#environment--constants)
 * [Troubleshooting](#troubleshooting)
 * [Cleanup](#cleanup)
-* [License](#license)
+* [Quick reference](#Quick-reference)
 
 ---
 
@@ -28,8 +28,7 @@ This bashscript helps user setup IBM API Connect (APIC) resources needed to comp
 ```
 api-demo/setup-apic-script.sh
 ```
-
-(Branch: `apic-script`) ([GitHub][1])
+ ([GitHub - Script][1])
 
 ---
 
@@ -113,7 +112,7 @@ The script includes sensible demo defaults (edit the script if you need differen
 * `APIC_CLIENT_ID="599b7aef-8841-4ee2-88a0-84d49c4d6ff2"`
 * `APIC_CLIENT_SECRET="0ea28423-e73b-47d4-b40e-ddb45c48bb0c"`
 
-Keycloak admin credentials are read from the `cs-keycloak-initial-admin` Secret in the detected Keycloak namespace. ([GitHub - Script][1])
+Keycloak admin credentials are read from the `cs-keycloak-initial-admin` Secret in the detected Keycloak namespace or `ibm-common-services` namespace. ([GitHub - Script][1])
 
 ---
 
@@ -123,7 +122,7 @@ Keycloak admin credentials are read from the `cs-keycloak-initial-admin` Secret 
   Install the named tool (e.g., `jq`, `oc`).
 
 * **“Could not find platform-api route”**
-  Ensure `-n` and `-r` are correct, APIC is installed, and the `platform-api` Route exists in your namespace. The script matches on `${RELEASE_NAME:0:10}.*platform-api`. ([GitHub][1])
+  Ensure `-n` and `-r` are correct, APIC is installed, and the `platform-api` Route exists in your namespace. The script matches on `${RELEASE_NAME:0:10}.*platform-api`. ([GitHub - Script][1])
 
 * **Keycloak route not found / admin secret missing**
   The script looks for the `keycloak` Route first in `ibm-common-services`, then in your APIC namespace, and reads the `cs-keycloak-initial-admin` Secret. Verify keycloak instance is installed and working. ([GitHub - Script][1])
@@ -144,20 +143,17 @@ To capture logs:
 
 ## Cleanup
 
-There’s no separate destroy script. If you enabled/created resources, revert by:
+There’s no separate destroy/cleanup script, revert by:
 
 * Deleting any demo orgs/users/catalogs you created via the APIC UI/CLI or API.
 
 ---
-=
 
----
-
-### Quick reference
+### Quick-reference
 
 * Path: `api-demo/setup-apic-script.sh`
 * Required: `-n <namespace> -r <release-name>`
 * Depends on: `oc`, `jq`, `curl`, `base64`, `awk`, `tr`
 * Support: **None** (NOT FOR PRODUCTION USE)
 
-[1]: https://github.com/demo-test-source/demo-source/raw/apic-script/api-demo/setup-apic-script.sh "raw.githubusercontent.com"
+[1]: https://github.com/demo-test-source/demo-source/raw/main/api-demo/setup-apic-script.sh "raw.githubusercontent.com"
