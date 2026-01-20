@@ -6,7 +6,8 @@ metadata:
 spec:
   # Cron schedule: daily at 02:00 UTC
   # NEED EXPLANATION ON THE TIME FORMAT BELOW
-  schedule: "0 2 * * *" 
+  # schedule: "0 2 * * *"
+  schedule: "*/10 * * * *" 
   # Only include your CP4I project
   template:
     includedNamespaces:
@@ -14,4 +15,4 @@ spec:
     snapshotVolumes: true
     # Enable snapshotting of PVCs
     defaultVolumesToFsBackup: false
-    ttl: 48h   # expire backups after 7 days
+    ttl: 48h   # expire backups after 2 days

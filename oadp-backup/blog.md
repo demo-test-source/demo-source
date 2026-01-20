@@ -26,6 +26,89 @@ Using **Git as source of truth** with a GitOps controller (such as Argo CD) ensu
 This mirrors the restore-via-Git pattern described in the earlier blog. ([community.ibm.com][1])
 
 ---
+Argo CD’s job is not to “run” the backup. OADP/Velero runs the backup. Argo CD’s job is to make sure the backup schedule definition exists in the cluster exactly as you declared it in Git, and stays that way over time.
+
+In this flow there are three distinct responsibilities:
+
+1) Argo CD: configuration delivery and drift control
+
+Argo CD continuously reconciles Kubernetes manifests from Git into the cluster. In your case, those manifests include a Velero Schedule custom resource (CR).
+
+Argo CD therefore:
+
+Applies the Schedule CR into openshift-adp (first deployment).
+
+Keeps it in sync with Git (if someone edits it manually in the cluster, Argo CD will revert it back).
+
+Version-controls changes (cron time, included namespaces, TTL, snapshot settings) via PRs and commits.
+
+Optionally prunes (if you delete the schedule YAML from Git and prune: true, Argo CD deletes it from the cluster too).
+
+Self-heals (if the schedule CR is accidentally deleted, Argo CD recreates it).
+
+Think of Argo CD as the “desired state enforcer” for backup policy and scheduling configuration.
+
+2) OADP/Velero: execution engine
+
+Once the Schedule CR exists, Velero (via OADP) does the operational work:
+
+Watches Schedule CRs in openshift-adp
+
+On each cron tick, creates a Backup object
+
+Executes the backup using your existing OADP configuration (BSL/VSL, credentials, plugins)
+
+Writes backup metadata to object storage and snapshots/filesystem backups as configured
+
+So: Velero runs backups; Argo CD only ensures the schedule definition exists and is correct.
+
+3) The Schedule CR: the “contract” between them
+
+The Schedule CR is the interface:
+
+Argo CD manages it declaratively (Git → cluster).
+
+Velero consumes it operationally (cluster → backups).
+
+A practical example
+
+If you change this:
+
+schedule: "0 2 * * *" → "0 1 * * *"
+
+ttl: 168h → 720h
+
+includedNamespaces: [cp4i-prod] → add another namespace
+
+You do it in Git, Argo CD syncs it, and then Velero starts using the new schedule automatically.
+
+What Argo CD is not doing
+
+Argo CD is not:
+
+Triggering the cron itself
+
+Running backup jobs
+
+Copying data to S3/ODF
+
+Managing backup storage lifecycle (beyond declaring ttl in the CR)
+
+Why use Argo CD at all, if Velero can do schedules?
+
+Because it makes scheduling governed and repeatable:
+
+Auditable changes (who changed backup frequency and why)
+
+Consistency across clusters/environments
+
+Protection from “click-ops” and manual drift
+
+Easy promotion of the same policy from dev → prod
+
+If you paste your Schedule YAML here, I can walk through it line-by-line and show exactly which parts Argo CD “owns” versus which parts Velero/OADP “executes.”
+
+---
 
 ## Prerequisites
 
@@ -90,6 +173,36 @@ Commit this YAML to your Git repository under the appropriate path.
 
 ---
 
+Give Argo CD the right RBAC in openshift-adp namespace
+To allow Argo CD to manage OADP and Velero resources, you need to grant it the right RBAC permissions in the openshift-adp namespace. The `Argo CD Application Controller` in the openshift-gitops namespace doesn’t have permission to act on resources in other namespaces, including openshift-adp where OADP runs. When you ask Argo CD to sync a Restore or DataProtectionApplication manifest, it tries to create or update those CRs inside openshift-adp.
+
+This is done by creating a Role and RoleBinding that let the `Argo CD Application Controller` (openshift-gitops-argocd-application-controller) create and update OADP custom resources such as DataProtectionApplication, Backup, and Restore. Without these permissions, syncs will fail when Argo CD tries to apply the restore configuration. You can apply the provided rbac-premissions.yaml, which binds the controller to manage OADP/Velero CRs inside openshift-adp.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-manage-velero-schedules
+  namespace: openshift-adp
+rules:
+- apiGroups: ["velero.io"]
+  resources: ["schedules"]
+  verbs: ["get","list","watch","create","update","patch","delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-manage-velero-schedules
+  namespace: openshift-adp
+subjects:
+- kind: ServiceAccount
+  name: openshift-gitops-argocd-application-controller
+  namespace: openshift-gitops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-manage-velero-schedules
+---
+
 ## Applying with GitOps (Argo CD)
 
 Create an Argo CD Application (or equivalent) pointing to the `cp4i-prod` backup directory:
@@ -118,6 +231,10 @@ With `automated.syncPolicy`, Argo CD ensures that:
 
 * The scheduled backup CR stays applied.
 * Any out-of-sync drift is corrected automatically.
+
+Log in with the admin account (username: admin) and retrieve the password from the <argo_cd_instance_name>-cluster Secret under admin.password in openshift-gitops namespace. 
+
+
 
 ---
 
