@@ -6,8 +6,7 @@ metadata:
 spec:
   # Cron schedule: daily at 02:00 UTC
   # NEED EXPLANATION ON THE TIME FORMAT BELOW
-  # schedule: "0 2 * * *"
-  schedule: "*/10 * * * *" 
+  schedule: "0 2 * * *"
   # Only include your CP4I project
   template:
     includedNamespaces:
