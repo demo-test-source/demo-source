@@ -1,0 +1,17 @@
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: cp4i-prod-daily
+  namespace: openshift-adp
+spec:
+  # Cron schedule: daily at 02:00 UTC
+  # NEED EXPLANATION ON THE TIME FORMAT BELOW
+  schedule: "0 2 * * *" 
+  # Only include your CP4I project
+  template:
+    includedNamespaces:
+      - cp4i-prod
+    snapshotVolumes: true
+    # Enable snapshotting of PVCs
+    defaultVolumesToFsBackup: false
+    ttl: 168h   # expire backups after 7 days

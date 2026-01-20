@@ -46,12 +46,13 @@ A clean shell for your backup definitions might look like:
 gitops-repo/
 └── oadp/
     └── backups/
-        └── cp4i-prod/
+        └── cp4i-prod/ <Namespacefolder>
             ├── schedule_backup-cp4i-prod.yaml
             ├── README.md
 ```
 
 This isolates backup schedule definitions per workload or namespace (project).
+
 
 ---
 
@@ -174,3 +175,8 @@ If you’d like, I can generate **example backup manifest templates**, **Argo CD
 	Restoring Cloud Pak for Integration workload using GitOps & OADP
 "
 [2]: https://www.ibm.com/docs/en/cloud-paks/cp-integration/16.1.1?topic=administering-backing-up-restoring-cloud-pak-integration&utm_source=chatgpt.com "Backing up and restoring IBM Cloud Pak for Integration"
+
+
+
+- No talk about which operator to install, oadp and gitops
+- For setting oadp we can point to the docs
