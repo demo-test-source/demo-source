@@ -10,8 +10,8 @@ spec:
   # Only include your CP4I project
   template:
     includedNamespaces:
-      - cp4i-prod
+      - nav-ns
     snapshotVolumes: true
     # Enable snapshotting of PVCs
     defaultVolumesToFsBackup: false
-    ttl: 168h   # expire backups after 7 days
+    ttl: 48h   # expire backups after 7 days

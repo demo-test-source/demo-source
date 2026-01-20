@@ -72,7 +72,7 @@ spec:
   # Only include your CP4I project
   template:
     includedNamespaces:
-      - cp4i-prod
+      - nav-ns
     snapshotVolumes: true
     # Enable snapshotting of PVCs
     defaultVolumesToFsBackup: false
