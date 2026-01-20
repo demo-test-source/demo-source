@@ -4,6 +4,7 @@ metadata:
   name: cp4i-backups
   namespace: openshift-gitops
 spec:
+  project: default
   source:
     repoURL: https://github.com/demo-test-source/demo-source.git
     targetRevision: oadp-backup
