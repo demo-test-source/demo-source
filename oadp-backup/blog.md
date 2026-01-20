@@ -99,13 +99,14 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: cp4i-backups
+  namespace: openshift-gitops
 spec:
   source:
-    repoURL: "https://github.com/yourorg/gitops-repo.git"
-    targetRevision: main
-    path: "oadp/backups/cp4i-prod"
+    repoURL: https://github.com/demo-test-source/demo-source.git
+    targetRevision: oadp-backup
+    path: oadp-backup/gitops-repo/oadp/backups/cp4i-prod
   destination:
-    server: "https://kubernetes.default.svc"
+    server: https://kubernetes.default.svc
     namespace: openshift-adp
   syncPolicy:
     automated:
