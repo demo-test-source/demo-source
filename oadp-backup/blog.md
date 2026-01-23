@@ -1,112 +1,47 @@
 
-# Using GitOps and OADP to Schedule Backups for Cloud Pak for Integration on RHOCP
+# Using GitOps and OpenShift APIs for Data Protection (OADP) to Schedule Backups for Cloud Pak for Integration on RHOCP
 
 ## Introduction
 
-In a previous blog, we showed how to **restore Cloud Pak for Integration (CP4I) workloads** using GitOps and the OpenShift APIs for Data Protection (OADP). That workflow used a Git-managed `Restore` CR to drive repeatable restores from an existing Velero backup. ([community.ibm.com][1])
+In a previous blog, we showed how to **restore Cloud Pak for Integration (CP4I) workloads** using Red Hat Openshift GitOps and the OADP Operators are already installed. That workflow used a Git-managed `Restore` CR to drive repeatable restores from an existing Velero backup. ([community.ibm.com][1])
 
-This follow-on post explains how to use **OADP + GitOps** to **take *scheduled backups*** of a CP4I workload running in a specific OpenShift project on **Red Hat OpenShift Container Platform (RHOCP)**. Workload and environment definitions are assumed to exist already — particularly **OADP installed and configured** (including the `DataProtectionApplication` pointing to your object store) — so this post focuses on **backup scheduling and GitOps lifecycle management**.
+This follow-on post explains how to use **OADP + GitOps** to **take *scheduled backups*** of a CP4I workload running in a specific OpenShift project on **Red Hat OpenShift Container Platform (RHOCP)**. 
+
+The assumptions are that the workload (in this case CP4I workload) and environment definitions are assumed to exist already:
+- Openshift Cluster with cluster-admin access
+- Workload installed in a single namespace. In this case it is Cloud Pak for Integration (CP4I) workload installed in namespace called `oadp-ns`, in ‘single namespace` mode.
+- OpenShift API for Data Protection (OADP) Operator installed in the openshift-adp namespace. (https://docs.redhat.com/en/documentation/openshift_container_platform/4.14/html/backup_and_restore/oadp-application-backup-and-restore#about-installing-oadp)
+
+- RedHat Openshift Gitops operator is installed, this will install ArgoCD on the cluster
+- DataProtectionApplication (DPA) configured to back up to an S3 bucket (endpoint, bucket, and credentials set). (Instruction)[https://www.ibm.com/docs/en/cloud-paks/cp-integration/16.1.0?topic=administering-backing-up-restoring-cloud-pak-integration#configuring-oadp__title__1] on setting up and configuring this step
+
+
+Instructions for setting up the CP4I workload can be found in the Tutorial: Using the assembly canvas to create messaging workflows with Kubernetes resources in IBM docs.
+ — particularly **Openshift  installed and configured** (including the `DataProtectionApplication` pointing to your object store) — so this post focuses on **backup scheduling and GitOps lifecycle management**.
 
 ---
 
 ## Why GitOps for Backups?
 
-Manual backups via CLI or ad-hoc scripts create operational friction and risk:
+Manual backups performed through the CLI or ad-hoc scripts often introduce unnecessary operational friction and risk. Over time, these approaches become difficult to audit, as there is no reliable record of when or why changes were made. They are also prone to configuration drift, where the actual backup behaviour no longer matches the documented or intended state. Additionally, reproducing the same backup configuration consistently across multiple environments can be challenging, leading to inconsistency and potential gaps in protection.
 
-* They are hard to audit.
-* They can drift from documented intent.
-* They are hard to repeat across environments.
-
-Using **Git as source of truth** with a GitOps controller (such as Argo CD) ensures:
-
-* Backups are **declarative**.
-* Changes are **reviewable and versioned**.
-* Backups are **auto-applied and self-healed**.
-
-This mirrors the restore-via-Git pattern described in the earlier blog. ([community.ibm.com][1])
+By contrast, using Git as the single source of truth in combination with a GitOps controller such as Argo CD brings structure and reliability to the backup process. Backup configurations are defined declaratively, ensuring that the desired state is explicit and repeatable. All changes are versioned and reviewable through standard Git workflows, providing clear auditability. Once committed, these configurations are automatically applied and continuously reconciled, allowing the system to self-heal if any drift occurs. This approach aligns closely with the restore-via-Git pattern described in the earlier blog on the IBM Community site.
 
 ---
-Argo CD’s job is not to “run” the backup. OADP/Velero runs the backup. Argo CD’s job is to make sure the backup schedule definition exists in the cluster exactly as you declared it in Git, and stays that way over time.
+
+Argo CD’s job is not to “run” the backup. OADP/Velero runs the backup using the 'Schedule' resource. Argo CD’s job is to make sure the backup schedule definition exists in the cluster exactly as you declared it in Git, and stays that way over time.
 
 In this flow there are three distinct responsibilities:
 
-1) Argo CD: configuration delivery and drift control
+Argo CD: configuration delivery and drift control
+Argo CD is responsible for delivering and maintaining the desired backup configuration in the cluster. It continuously reconciles Kubernetes manifests stored in Git with the live cluster state, including the Velero Schedule custom resource stored in the openshift-adp namespace. When the schedule is first introduced, Argo CD applies it to the cluster. From that point onward, it ensures the configuration remains consistent with Git: any manual changes made directly in the cluster are reverted, updates to parameters such as cron timing, included namespaces, retention (ttl), or snapshot settings are tracked and reviewed through Git commits, and accidental deletions are automatically corrected. If pruning is enabled, removing the schedule from Git will also remove it from the cluster. In this role, Argo CD acts as the “desired state enforcer” for backup policy and scheduling.
 
-Argo CD continuously reconciles Kubernetes manifests from Git into the cluster. In your case, those manifests include a Velero Schedule custom resource (CR).
+OADP / Velero: execution engine
+Once the Schedule custom resource exists, OADP—through Velero—takes over the operational execution. Velero continuously watches for Schedule resources in the openshift-adp namespace and evaluates them based on the defined cron expression. At each scheduled interval, Velero creates a corresponding Backup object and executes the backup using the existing OADP configuration, including the configured BackupStorageLocation (BSL), VolumeSnapshotLocation (VSL), credentials, and plugins. It then writes backup metadata to object storage and performs volume snapshots or filesystem-level backups as configured. In short, Velero is responsible for running backups, while Argo CD is responsible for ensuring the schedule definition exists and remains correct.
 
-Argo CD therefore:
+The Schedule custom resource: the contract between GitOps and execution
+The Velero Schedule custom resource serves as the contract between Argo CD and Velero. Argo CD manages this resource declaratively, synchronising it from Git into the cluster, while Velero consumes it operationally to generate and execute backups. For example, if you change the backup time from 0 2 * * * to 0 1 * * *, increase the retention from 168h to 720h, or adjust the includedNamespaces, those changes are made in Git. Argo CD applies and enforces them in the cluster, and Velero automatically begins using the updated configuration without any manual intervention. Argo CD does not trigger cron jobs, run backups, or move data to storage; its value lies in making backup scheduling governed, auditable, repeatable, and consistent across environments, enabling safe promotion of the same policy from development to production.
 
-Applies the Schedule CR into openshift-adp (first deployment).
-
-Keeps it in sync with Git (if someone edits it manually in the cluster, Argo CD will revert it back).
-
-Version-controls changes (cron time, included namespaces, TTL, snapshot settings) via PRs and commits.
-
-Optionally prunes (if you delete the schedule YAML from Git and prune: true, Argo CD deletes it from the cluster too).
-
-Self-heals (if the schedule CR is accidentally deleted, Argo CD recreates it).
-
-Think of Argo CD as the “desired state enforcer” for backup policy and scheduling configuration.
-
-2) OADP/Velero: execution engine
-
-Once the Schedule CR exists, Velero (via OADP) does the operational work:
-
-Watches Schedule CRs in openshift-adp
-
-On each cron tick, creates a Backup object
-
-Executes the backup using your existing OADP configuration (BSL/VSL, credentials, plugins)
-
-Writes backup metadata to object storage and snapshots/filesystem backups as configured
-
-So: Velero runs backups; Argo CD only ensures the schedule definition exists and is correct.
-
-3) The Schedule CR: the “contract” between them
-
-The Schedule CR is the interface:
-
-Argo CD manages it declaratively (Git → cluster).
-
-Velero consumes it operationally (cluster → backups).
-
-A practical example
-
-If you change this:
-
-schedule: "0 2 * * *" → "0 1 * * *"
-
-ttl: 168h → 720h
-
-includedNamespaces: [cp4i-prod] → add another namespace
-
-You do it in Git, Argo CD syncs it, and then Velero starts using the new schedule automatically.
-
-What Argo CD is not doing
-
-Argo CD is not:
-
-Triggering the cron itself
-
-Running backup jobs
-
-Copying data to S3/ODF
-
-Managing backup storage lifecycle (beyond declaring ttl in the CR)
-
-Why use Argo CD at all, if Velero can do schedules?
-
-Because it makes scheduling governed and repeatable:
-
-Auditable changes (who changed backup frequency and why)
-
-Consistency across clusters/environments
-
-Protection from “click-ops” and manual drift
-
-Easy promotion of the same policy from dev → prod
-
-If you paste your Schedule YAML here, I can walk through it line-by-line and show exactly which parts Argo CD “owns” versus which parts Velero/OADP “executes.”
 
 ---
 
@@ -151,6 +86,12 @@ metadata:
   namespace: openshift-adp
 spec:
   # Cron schedule: daily at 02:00 UTC
+  # Minute hour day-of-month month day-of-week
+  # Minute (0) – run at the start of the hour
+  # Hour (2) – run at 02:00
+  # Day of month (*) – every day of the month
+  # Month (*) – every month
+  # Day of week (*) – every day of the week
   schedule: "0 2 * * *"
   # Only include your CP4I project
   template:
@@ -159,7 +100,7 @@ spec:
     snapshotVolumes: true
     # Enable snapshotting of PVCs
     defaultVolumesToFsBackup: false
-    ttl: 168h   # expire backups after 7 days
+    ttl: 48h   # expire backups after 2 days
 ```
 
 **Key fields explained:**
@@ -169,7 +110,7 @@ spec:
 * `snapshotVolumes`: Captures volume snapshots if CSI supports it.
 * `ttl`: Time-to-live so old backups are automatically cleaned up.
 
-Commit this YAML to your Git repository under the appropriate path.
+This Yaml is already available in git  <PUT THE LINK AFTER MERGING IT TO MAIN>
 
 ---
 
@@ -178,6 +119,7 @@ To allow Argo CD to manage OADP and Velero resources, you need to grant it the r
 
 This is done by creating a Role and RoleBinding that let the `Argo CD Application Controller` (openshift-gitops-argocd-application-controller) create and update OADP custom resources such as DataProtectionApplication, Backup, and Restore. Without these permissions, syncs will fail when Argo CD tries to apply the restore configuration. You can apply the provided rbac-premissions.yaml, which binds the controller to manage OADP/Velero CRs inside openshift-adp.
 
+```yaml
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -201,6 +143,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: argocd-manage-velero-schedules
+```  
 ---
 
 ## Applying with GitOps (Argo CD)
@@ -214,9 +157,13 @@ metadata:
   name: cp4i-backups
   namespace: openshift-gitops
 spec:
+  project: default
   source:
-    repoURL: https://github.com/demo-test-source/demo-source.git
+    # Link to the GitRepo
+    repoURL: https://github.com/demo-test-source/demo-source.git 
+    # Branch Name
     targetRevision: oadp-backup
+    # Directory Path, Where the file is
     path: oadp-backup/gitops-repo/oadp/backups/cp4i-prod
   destination:
     server: https://kubernetes.default.svc
@@ -270,7 +217,7 @@ You should see backups generated on cadence, with objects and PVC snapshots stor
 
 **Scope:** If you need cluster-wide backups, adjust `includedNamespaces` or include additional schedules per namespace.
 
-**Testing and Restore:** Regularly validate restores to ensure backups are usable, using the restore patterns from your earlier blog. ([community.ibm.com][1])
+**Testing and Restore:** Regularly validate restores to ensure backups are usable, using the restore patterns from the earlier blog. ([community.ibm.com][1])
 
 ---
 
