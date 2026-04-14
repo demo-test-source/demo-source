@@ -150,11 +150,13 @@ function CONFIGURE_KEYCLOAK_CONFIG(){
   KEYCLOAK_NAMESPACE=$(oc get route keycloak -n ibm-common-services -o jsonpath='{.metadata.namespace}') # Check for keycloak route in ibm-common-services namespace, applicable for cluster-wide install
   if [ -z "$KEYCLOAK_NAMESPACE" ]; then
     KEYCLOAK_NAMESPACE=$(oc get route keycloak -n ${NAMESPACE} -o jsonpath='{.metadata.namespace}')
-  else
-    printf "$CROSS"
-    err "[ERROR] KEYCLOAK ROUTE NOT FOUND..."
-    info "[INFO] KEYCLOAK IS REQUIRED..."
-    exit 1
+    
+    if [ -z "$KEYCLOAK_NAMESPACE" ]; then
+      printf "$CROSS"
+      err "[ERROR] KEYCLOAK ROUTE NOT FOUND..."
+      info "[INFO] KEYCLOAK IS REQUIRED..."
+      exit 1
+    fi
   fi
 
   ok "KEYCLOAK_NAMESPACE=${KEYCLOAK_NAMESPACE}"
@@ -182,7 +184,7 @@ function CONFIGURE_KEYCLOAK_CONFIG(){
 
   dbg "KC_TOKEN: curl -X POST \"https://${KEYCLOAK_ROUTE}/realms/master/protocol/openid-connect/token\" -H \"Content-Type: application/x-www-form-urlencoded\" -d \"username=${KEYCLOAK_ADMIN_USRNAME}\" -d \"password=${KEYCLOAK_ADMIN_PWD}\" -d \"grant_type=password\" -d \"client_id=admin-cli\" | jq -r '.access_token'"
 
-  KC_TOKEN=$(curl -X POST "https://${KEYCLOAK_ROUTE}/realms/master/protocol/openid-connect/token" \
+  KC_TOKEN=$(curl -k -X POST "https://${KEYCLOAK_ROUTE}/realms/master/protocol/openid-connect/token" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "username=${KEYCLOAK_ADMIN_USRNAME}" -d "password=${KEYCLOAK_ADMIN_PWD}" -d "grant_type=password" \
   -d "client_id=admin-cli" | jq -r '.access_token')
@@ -191,7 +193,7 @@ function CONFIGURE_KEYCLOAK_CONFIG(){
 
   dbg "KEYCLOAK CLIENT: curl -X GET \"https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients?clientId=${APIC_KEYCLOAK_CLIENT}\" -H \"Authorization: Bearer ${KC_TOKEN}\""
 
-  KC_CLIENT=$(curl -X GET "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients?clientId=${APIC_KEYCLOAK_CLIENT}" \
+  KC_CLIENT=$(curl -k -X GET "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients?clientId=${APIC_KEYCLOAK_CLIENT}" \
   -H "Authorization: Bearer $KC_TOKEN")
 
   info "[INFO] KEYCLOAK CLIENT: $KC_CLIENT"
@@ -225,12 +227,12 @@ function CONFIGURE_KEYCLOAK_CONFIG(){
     dbg "curl -X PUT \"https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients/${UUID}\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer ${KC_TOKEN}\" -d '{\"directAccessGrantsEnabled\": true}'"
 
     # Enabling the Grant type
-    curl -X PUT "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients/$UUID" \
+    curl -k -X PUT "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients/$UUID" \
     -H "Content-Type: application/json" -H "Authorization: Bearer $KC_TOKEN" -d '{"directAccessGrantsEnabled": true}'
 
     sleep 30
 
-    KC_RESPONSE=$(curl -X GET "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients?clientId=${APIC_KEYCLOAK_CLIENT}" -H "Authorization: Bearer $KC_TOKEN")
+    KC_RESPONSE=$(curl -k -X GET "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients?clientId=${APIC_KEYCLOAK_CLIENT}" -H "Authorization: Bearer $KC_TOKEN")
     GRANT=$(echo "$KC_RESPONSE" | jq -r '.[].directAccessGrantsEnabled')
 
     info "[INFO] GRANT STATUS: ${GRANT}"
@@ -266,7 +268,7 @@ EOF
 
   dbg "CURL COMMAND FOR SETTING UP: curl -X POST \"https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients/${UUID}/protocol-mappers/models\" -H \"Authorization: Bearer ${KC_TOKEN}\" -H \"Content-Type: application/json\" -d @aud.json"
 
-  curl -X POST https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients/$UUID/protocol-mappers/models \
+  curl -k -X POST https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/clients/$UUID/protocol-mappers/models \
   -H "Authorization: Bearer $KC_TOKEN" \
   -H "Content-Type: application/json" \
   -d @aud.json
@@ -276,7 +278,7 @@ EOF
   # FETCH USERID FOR INTEGRATION-ADMIN USER
   dbg "curl -X GET \"https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/users?username=integration-admin\" -H \"Authorization: Bearer ${KC_TOKEN}\""
 
-  INTEGRATION_ADMIN_ID=$(curl -X GET "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/users?username=integration-admin" \
+  INTEGRATION_ADMIN_ID=$(curl -k -X GET "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/users?username=integration-admin" \
     -H "Authorization: Bearer $KC_TOKEN" | jq -r '.[0].id')
 
   dbg "INTEGRATION_ADMIN_ID: $INTEGRATION_ADMIN_ID"
@@ -291,7 +293,7 @@ EOF
      -H \"Content-Type: application/json\" \
      -d '{\"email\":\"theprocrastinator@example.com\",\"emailVerified\":true}'"
 
-RES=$(curl -X PUT "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/users/${INTEGRATION_ADMIN_ID}" \
+RES=$(curl -k -X PUT "https://${KEYCLOAK_ROUTE}/admin/realms/cloudpak/users/${INTEGRATION_ADMIN_ID}" \
   -H "Authorization: Bearer $KC_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -367,11 +369,13 @@ info "[INFO] FETCHING THE INTEGRATION_ADMIN LOGIN CREDENTIALS..."
 KEYCLOAK_NAMESPACE=$(oc get route keycloak -n ibm-common-services -o jsonpath='{.metadata.namespace}') # Check for keycloak route in ibm-common-services namespace, applicable for cluster-wide install
 if [ -z "$KEYCLOAK_NAMESPACE" ]; then
   KEYCLOAK_NAMESPACE=$(oc get route keycloak -n ${NAMESPACE} -o jsonpath='{.metadata.namespace}')
-else
-  printf "$CROSS"
-  err "[ERROR] KEYCLOAK NAMESPACE NOT FOUND..."
-  info "[INFO] KEYCLOAK IS REQUIRED..."
-  exit 1
+  
+  if [ -z "$KEYCLOAK_NAMESPACE" ]; then
+    printf "$CROSS"
+    err "[ERROR] KEYCLOAK NAMESPACE NOT FOUND..."
+    info "[INFO] KEYCLOAK IS REQUIRED..."
+    exit 1
+  fi
 fi
 
 INTEGRATION_ADMIN_SECRET_NAMESPACE=$(oc get secret integration-admin-initial-temporary-credentials -n ibm-common-services -o jsonpath='{.metadata.namespace}')
@@ -379,9 +383,11 @@ INTEGRATION_ADMIN_SECRET_NAMESPACE=$(oc get secret integration-admin-initial-tem
 if [ -z "$INTEGRATION_ADMIN_SECRET_NAMESPACE" ]; then
     dbg "KEYCLOAK_NAMESPACE: ${KEYCLOAK_NAMESPACE}"
     INTEGRATION_ADMIN_SECRET_NAMESPACE=$(oc get secret integration-admin-initial-temporary-credentials -n ${KEYCLOAK_NAMESPACE} -o jsonpath='{.metadata.namespace}')
-else
-  err "[ERROR] UNABLE TO FETCH INTEGRATION_ADMIN_SECRET_NAMESPACE: $INTEGRATION_ADMIN_SECRET_NAMESPACE"
-  exit 1
+    
+    if [ -z "$INTEGRATION_ADMIN_SECRET_NAMESPACE" ]; then
+      err "[ERROR] UNABLE TO FETCH INTEGRATION_ADMIN_SECRET_NAMESPACE: $INTEGRATION_ADMIN_SECRET_NAMESPACE"
+      exit 1
+    fi
 fi
 
 info "[INFO] INTEGRATION_ADMIN_SECRET_NAMESPACE: ${INTEGRATION_ADMIN_SECRET_NAMESPACE}"
